@@ -86,7 +86,6 @@
         .cell { background: #eee; position: relative; display: flex; align-items: center; justify-content: center; z-index: 2; overflow: hidden;}
         .cell select { width: 100%; height: 100%; border: none; font-size: 1.25rem; font-weight: bold; background: transparent; text-align: center; z-index: 10; text-shadow: 0 0 5px #fff; appearance: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
         
-        /* 現在地マーカー */
         #user-marker {
             position: absolute; width: 18px; height: 18px; background: #007AFF; border: 3px solid white; border-radius: 50%;
             z-index: 1000; transform: translate(-50%, -50%); display: none; pointer-events: none;
@@ -96,13 +95,11 @@
         .pitch-lines { position: absolute; top: 50%; left: 50%; width: calc(100% * (105 / 106)); height: calc(100% * (68 / 72)); transform: translate(-50%, -50%); border: 2px solid var(--line-color); pointer-events: none; z-index: 100; filter: drop-shadow(0 0 2px rgba(0,0,0,0.5)); }
         .center-line { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: var(--line-color); pointer-events: none; transform: translateX(-50%); }
         .center-circle { position: absolute; left: 50%; top: 50%; width: 17.4%; aspect-ratio: 1/1; border: 2px solid var(--line-color); border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%); }
-        .penalty-area-left, .penalty-area-right, .goal-area-left, .goal-area-right, .penalty-arc-left, .penalty-arc-right { border: 2px solid var(--line-color); pointer-events: none; position: absolute; }
+        .penalty-area-left, .penalty-area-right, .goal-area-left, .goal-area-right { border: 2px solid var(--line-color); pointer-events: none; position: absolute; }
         .penalty-area-left { left: 0; top: 20.3%; width: 15.7%; height: 59.4%; border-left: none; }
         .penalty-area-right { right: 0; top: 20.3%; width: 15.7%; height: 59.4%; border-right: none; }
         .goal-area-left { left: 0; top: 36.5%; width: 5.2%; height: 27%; border-left: none; }
         .goal-area-right { right: 0; top: 36.5%; width: 5.2%; height: 27%; border-right: none; }
-        .penalty-arc-left { left: 10.5%; top: 50%; width: 17.4%; aspect-ratio: 1/1; border-radius: 50%; transform: translate(-50%, -50%); clip-path: inset(0 0 0 80%); }
-        .penalty-arc-right { right: 10.5%; top: 50%; width: 17.4%; aspect-ratio: 1/1; border-radius: 50%; transform: translate(50%, -50%); clip-path: inset(0 80% 0 0); }
 
         .color-5 { background-color: #2e7d32 !important; color: white !important; }
         .color-4 { background-color: #a5d6a7 !important; }
@@ -143,7 +140,7 @@
             <div class="notes-title">⚠️ 利用上の注意事項</div>
             <ul class="notes-list">
                 <li>調査データはこの端末（タブレット）のブラウザ内にのみ保存されます。</li>
-                <li>ブラウザの「履歴消去」を行うとすべての調査履歴が消去されます。</li>
+                <li><span class="highlight">ブラウザの「履歴消去」を行うとすべての調査履歴が消去されます。</span></li>
                 <li>定期的なCSVエクスポートによるバックアップを推奨します。</li>
             </ul>
         </div>
@@ -209,8 +206,6 @@
                             <div class="penalty-area-right"></div>
                             <div class="goal-area-left"></div>
                             <div class="goal-area-right"></div>
-                            <div class="penalty-arc-left"></div>
-                            <div class="penalty-arc-right"></div>
                         </div>
                     </div>
                 </div>
@@ -265,10 +260,10 @@
 
         // GPS設定（4点の座標：検証用座標を維持）
         let watchId = null;
-        const P_NE = { lat: 37.883150140, lng: 139.059248474 }; // 左上(A1外)
-        const P_NW = { lat: 37.882293367, lng: 139.059804260 }; // 右上(A10外)
-        const P_SE = { lat: 37.882853552, lng: 139.058521391 }; // 左下(H1外)
-        const P_SW = { lat: 37.881996570, lng: 139.059077843 }; // 右下(H10外)
+        const P_NE = { lat: 37.883150140, lng: 139.059248474 }; 
+        const P_NW = { lat: 37.882293367, lng: 139.059804260 }; 
+        const P_SE = { lat: 37.882853552, lng: 139.058521391 }; 
+        const P_SW = { lat: 37.881996570, lng: 139.059077843 }; 
 
         function toMetric(target, base) {
             const R = 6378137;
