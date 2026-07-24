@@ -61,6 +61,7 @@
         .btn-img { background: #555; }
         .btn-csv { background: var(--albi-blue); }
         .btn-update { background: #2e7d32; }
+        .btn-gps { background: #007AFF; }
 
         #capture-area { background: var(--bg-color); padding: 15px; display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 1150px; box-sizing: border-box;}
         .header-panel { background: #fff; width: 100%; padding: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; display: grid; grid-template-columns: 320px 1fr; gap: 30px; box-sizing: border-box; }
@@ -85,6 +86,13 @@
         .cell { background: #eee; position: relative; display: flex; align-items: center; justify-content: center; z-index: 2; overflow: hidden;}
         .cell select { width: 100%; height: 100%; border: none; font-size: 1.25rem; font-weight: bold; background: transparent; text-align: center; z-index: 10; text-shadow: 0 0 5px #fff; appearance: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
         
+        /* 現在地マーカー */
+        #user-marker {
+            position: absolute; width: 18px; height: 18px; background: #007AFF; border: 3px solid white; border-radius: 50%;
+            z-index: 1000; transform: translate(-50%, -50%); display: none; pointer-events: none;
+            box-shadow: 0 0 10px rgba(0,122,255,0.8);
+        }
+
         .pitch-lines { position: absolute; top: 50%; left: 50%; width: calc(100% * (105 / 106)); height: calc(100% * (68 / 72)); transform: translate(-50%, -50%); border: 2px solid var(--line-color); pointer-events: none; z-index: 100; filter: drop-shadow(0 0 2px rgba(0,0,0,0.5)); }
         .center-line { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: var(--line-color); pointer-events: none; transform: translateX(-50%); }
         .center-circle { position: absolute; left: 50%; top: 50%; width: 17.4%; aspect-ratio: 1/1; border: 2px solid var(--line-color); border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%); }
@@ -135,7 +143,7 @@
             <div class="notes-title">⚠️ 利用上の注意事項</div>
             <ul class="notes-list">
                 <li>調査データはこの端末（タブレット）のブラウザ内にのみ保存されます。</li>
-                <li>ブラウザの<span class="highlight">「履歴消去」を行うとすべての調査履歴が消去されます</span>。</li>
+                <li>ブラウザの「履歴消去」を行うとすべての調査履歴が消去されます。</li>
                 <li>定期的なCSVエクスポートによるバックアップを推奨します。</li>
             </ul>
         </div>
@@ -160,6 +168,10 @@
                     <div><span class="info-label">⏰ 時　刻</span><input type="time" id="info-time" class="info-input" style="width:125px; margin-right:5px;"><button onclick="setNow()" id="btn-now-input">今</button></div>
                     <div><span class="info-label">👤 判定者</span><input type="text" id="info-user" class="info-input" placeholder="氏名"></div>
                     <div><span class="info-label">⛅ 天　候</span><input type="text" id="info-weather" class="info-input" placeholder="晴れ、曇りなど"></div>
+                    <div style="padding-left:85px; margin-top:5px;">
+                        <button class="btn-gps" onclick="toggleGPS()" id="btn-gps-toggle" style="padding:8px 15px; border-radius:6px; color:white; font-weight:bold; cursor:pointer; border:none; font-size:0.9rem;">📍 現在地を表示</button>
+                        <div id="gps-debug" style="font-size:0.7rem; color:#666; margin-top:5px; display:none;"></div>
+                    </div>
                 </div>
                 <div>
                     <label style="font-weight:bold; color:var(--albi-blue); font-size:0.9rem;">📝 備考:</label>
@@ -188,6 +200,7 @@
                 <div style="grid-column:2; font-weight:bold; color:var(--albi-blue); margin-bottom:10px; font-size:1.2rem;">E</div>
                 <div style="grid-column:1; grid-row:2; font-weight:bold; color:var(--albi-blue); margin-right:15px; font-size:1.2rem;">N</div>
                 <div class="pitch-wrapper">
+                    <div id="user-marker"></div>
                     <div id="grid" class="grid-container">
                         <div class="pitch-lines">
                             <div class="center-line"></div>
@@ -250,6 +263,23 @@
         let currentStamp = null;
         let editingIndex = -1;
 
+        // GPS設定（4点の座標：検証用座標を維持）
+        let watchId = null;
+        const P_NE = { lat: 37.883150140, lng: 139.059248474 }; // 左上(A1外)
+        const P_NW = { lat: 37.882293367, lng: 139.059804260 }; // 右上(A10外)
+        const P_SE = { lat: 37.882853552, lng: 139.058521391 }; // 左下(H1外)
+        const P_SW = { lat: 37.881996570, lng: 139.059077843 }; // 右下(H10外)
+
+        function toMetric(target, base) {
+            const R = 6378137;
+            const dLat = (target.lat - base.lat) * Math.PI / 180;
+            const dLng = (target.lng - base.lng) * Math.PI / 180;
+            const latMid = (target.lat + base.lat) / 2 * Math.PI / 180;
+            const dy = dLat * R;
+            const dx = dLng * R * Math.cos(latMid);
+            return { x: dx, y: dy };
+        }
+
         const memoArea = document.getElementById('info-memo');
         memoArea.addEventListener('input', () => {
             memoArea.style.height = 'auto'; 
@@ -278,12 +308,10 @@
             document.querySelectorAll('.legend-item').forEach(i => i.classList.remove('selected-stamp'));
             el.classList.add('selected-stamp');
         }
-
         function clearStamp() {
             currentStamp = null;
             document.querySelectorAll('.legend-item').forEach(i => i.classList.remove('selected-stamp'));
         }
-
         function fillAllWithStamp() {
             if(!currentStamp) return alert('先に数字を選んでください');
             if(!confirm('全てのマスを塗りつぶしますか？')) return;
@@ -293,7 +321,6 @@
             }});
             updateStats();
         }
-
         function applyStyle(cell, val) {
             cell.classList.remove('color-1','color-2','color-3','color-4','color-5','pattern-10','pattern-20');
             if (!val) return;
@@ -302,7 +329,6 @@
             if (num >= 11 && num <= 15) cell.classList.add('pattern-10');
             else if (num >= 21 && num <= 25) cell.classList.add('pattern-20');
         }
-
         function updateStats() {
             const counts = { 1:0, 2:0, 3:0, 4:0, 5:0 };
             rows.forEach(r => { for(let c=1; c<=10; c++) {
@@ -315,7 +341,6 @@
                 if(el) el.textContent = percent + '%';
             }
         }
-
         function createGrid() {
             const grid = document.getElementById('grid');
             rows.forEach(r => { for(let c=1; c<=10; c++) {
@@ -323,7 +348,6 @@
                 const sel = document.createElement('select'); sel.id = `${r}${c}`;
                 sel.appendChild(new Option("-", ""));
                 options.forEach(o => sel.appendChild(new Option(o, o)));
-                
                 const onAction = (e) => {
                     if(currentStamp) {
                         e.preventDefault(); 
@@ -332,28 +356,84 @@
                         updateStats();
                     }
                 };
-                
                 cell.addEventListener('mousedown', onAction);
                 cell.addEventListener('touchstart', onAction, {passive: false});
-
                 sel.onchange = (e) => { applyStyle(cell, e.target.value); updateStats(); };
                 cell.appendChild(sel); 
                 grid.appendChild(cell);
             }});
         }
 
+        function toggleGPS() {
+            const btn = document.getElementById('btn-gps-toggle');
+            const marker = document.getElementById('user-marker');
+            const debug = document.getElementById('gps-debug');
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                btn.textContent = "📍 現在地を表示";
+                btn.style.background = "#007AFF";
+                marker.style.display = "none";
+                debug.style.display = "none";
+            } else {
+                if (!navigator.geolocation) return alert("位置情報非対応です");
+                btn.textContent = "🛑 表示を停止";
+                btn.style.background = "#d32f2f";
+                marker.style.display = "block";
+                debug.style.display = "block";
+                watchId = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        const userRaw = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                        const mNW = toMetric(P_NW, P_NE);
+                        const mSE = toMetric(P_SE, P_NE);
+                        const mUser = toMetric(userRaw, P_NE);
+                        const angle = Math.atan2(mNW.y, mNW.x);
+                        const rotate = (p, rad) => {
+                            const cos = Math.cos(-rad);
+                            const sin = Math.sin(-rad);
+                            return { x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos };
+                        };
+                        const rotUser = rotate(mUser, angle);
+                        const rotNW = rotate(mNW, angle); 
+                        const rotSE = rotate(mSE, angle); 
+                        let xPct = (rotUser.x / rotNW.x) * 100;
+                        let yPct = (rotUser.y / rotSE.y) * 100;
+                        if (xPct >= -20 && xPct <= 120 && yPct >= -20 && yPct <= 120) {
+                            marker.style.left = xPct + "%";
+                            marker.style.top = yPct + "%";
+                            debug.textContent = `精度: ±${Math.round(pos.coords.accuracy)}m | 位置: ${Math.round(xPct)}%, ${Math.round(yPct)}%`;
+                        } else {
+                            debug.textContent = `範囲外にいます (±${Math.round(pos.coords.accuracy)}m)`;
+                        }
+                    },
+                    (err) => { alert("エラー: " + err.message); toggleGPS(); },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            }
+        }
+
         function saveAsImage() {
             const area = document.getElementById('capture-area');
             const btnNow = document.getElementById('btn-now-input');
-            btnNow.style.visibility = 'hidden';
-            const currentHeight = memoArea.style.height;
-            memoArea.style.height = memoArea.scrollHeight + 'px';
-
+            const btnGPS = document.getElementById('btn-gps-toggle');
+            const memo = document.getElementById('info-memo');
+            const tempDiv = document.createElement('div');
+            tempDiv.style.width = '100%'; tempDiv.style.minHeight = '80px';
+            tempDiv.style.border = '1px solid #ccc'; tempDiv.style.borderRadius = '8px';
+            tempDiv.style.padding = '10px'; tempDiv.style.fontSize = '1.1rem';
+            tempDiv.style.lineHeight = '1.5'; tempDiv.style.whiteSpace = 'pre-wrap';
+            tempDiv.style.wordWrap = 'break-word'; tempDiv.style.backgroundColor = '#fff';
+            tempDiv.style.boxSizing = 'border-box'; tempDiv.style.marginTop = '5px';
+            tempDiv.textContent = memo.value;
+            btnNow.style.visibility = 'hidden'; btnGPS.style.visibility = 'hidden';
+            memo.style.display = 'none';
+            memo.parentNode.insertBefore(tempDiv, memo);
             html2canvas(area, { scale: 2, backgroundColor: "#f0f2f0" }).then(canvas => {
-                const link = document.createElement('a'); link.download = `bigswan_${document.getElementById('info-date').value}.png`;
+                const link = document.createElement('a');
+                link.download = `bigswan_${document.getElementById('info-date').value}.png`;
                 link.href = canvas.toDataURL(); link.click();
-                btnNow.style.visibility = 'visible';
-                memoArea.style.height = currentHeight;
+                btnNow.style.visibility = 'visible'; btnGPS.style.visibility = 'visible';
+                memo.style.display = 'block'; tempDiv.remove();
             });
         }
 
@@ -367,26 +447,19 @@
                 grid: {} 
             };
             rows.forEach(r => { for(let c=1; c<=10; c++) data.grid[`${r}${c}`] = document.getElementById(`${r}${c}`).value; });
-            
             let history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-            
             if(isOverwrite && editingIndex !== -1) {
-                history[editingIndex] = data;
-                alert('上書き保存しました');
+                history[editingIndex] = data; alert('上書き保存しました');
             } else {
-                history.push(data);
-                alert('新規調査として保存しました');
+                history.push(data); alert('新規保存しました');
             }
-            
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-            goToHome();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(history)); goToHome();
         }
 
         function renderHistoryTable() {
             const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
             const tbody = document.getElementById('history-tbody');
             tbody.innerHTML = '';
-            
             history.slice().reverse().forEach((item, revIdx) => {
                 const realIdx = history.length - 1 - revIdx;
                 const tr = document.createElement('tr');
@@ -415,36 +488,29 @@
                 tbody.appendChild(tr);
             });
         }
-
         function toggleAllCheckboxes() {
             const checks = document.querySelectorAll('.history-checkbox');
             const allChecked = Array.from(checks).every(c => c.checked);
             checks.forEach(c => c.checked = !allChecked);
         }
-
         function deleteSelectedHistory() {
             const checks = document.querySelectorAll('.history-checkbox:checked');
-            if(checks.length === 0) return alert('削除する項目を選択してください');
-            if(!confirm(`${checks.length}件の履歴を削除しますか？`)) return;
-            
+            if(checks.length === 0) return alert('選択してください');
+            if(!confirm('削除しますか？')) return;
             let history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
             const indicesToDelete = Array.from(checks).map(c => parseInt(c.dataset.index)).sort((a,b) => b-a);
-            
             indicesToDelete.forEach(idx => history.splice(idx, 1));
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-            renderHistoryTable();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(history)); renderHistoryTable();
         }
-
         function clearForm() {
             document.getElementById('info-user').value = ""; 
             document.getElementById('info-weather').value = ""; 
             document.getElementById('info-memo').value = "";
             rows.forEach(r => { for(let c=1; c<=10; c++) { const sel = document.getElementById(`${r}${c}`); if(sel){ sel.value = ""; applyStyle(sel.parentElement, ""); } } });
         }
-
         function downloadCSV() {
             const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-            if(!history.length) return alert('データなし');
+            if(!history.length) return;
             let csv = "\uFEFF日付,時刻,天候,判定者,備考";
             rows.forEach(r => { for(let c=1; c<=10; c++) csv += `,${r}${c}`; });
             csv += "\n";
@@ -454,11 +520,9 @@
                 csv += row + "\n";
             });
             const blob = new Blob([csv], {type:'text/csv'});
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bigswan_history.csv'; a.click();
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'history.csv'; a.click();
         }
-
-        function clearAllHistory() { if(confirm('【警告】全ての履歴を消去しますか？この操作は取り消せません。')) { localStorage.removeItem(STORAGE_KEY); showHistory(); } }
-
+        function clearAllHistory() { if(confirm('全削除しますか？')) { localStorage.removeItem(STORAGE_KEY); showHistory(); } }
         window.onload = createGrid;
     </script>
 </body>
